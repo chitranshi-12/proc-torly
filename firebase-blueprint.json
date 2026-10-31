@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile document storing role and personal details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "role": { "type": "string", "enum": ["student", "invigilator", "admin"] },
+        "rollNo": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role", "createdAt"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Proctored examination definition created by invigilator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string", "maxLength": 20 },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "durationMinutes": { "type": "number" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "questions": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "code", "title", "durationMinutes", "startTime", "endTime", "createdBy"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "Candidate exam session including consent, answers, and status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "examId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string", "maxLength": 100 },
+        "rollNo": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 150 },
+        "status": { "type": "string", "enum": ["registered", "waiting", "in_progress", "submitted", "terminated"] },
+        "consentAgreed": { "type": "boolean" },
+        "consentTimestamp": { "type": "string" },
+        "answers": { "type": "object" },
+        "score": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "riskScore": { "type": "number" },
+        "isOnline": { "type": "boolean" },
+        "lastHeartbeat": { "type": "number" },
+        "referencePhotoUrl": { "type": "string" },
+        "startedAt": { "type": "string" },
+        "endedAt": { "type": "string" }
+      },
+      "required": ["id", "examId", "studentId", "studentName", "rollNo", "status"]
+    },
+    "Violation": {
+      "title": "Violation",
+      "description": "Logged integrity violation with screenshots captured by proctoring engine",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "examId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "rollNo": { "type": "string" },
+        "type": { "type": "string" },
+        "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "timestamp": { "type": "string" },
+        "screenUrl": { "type": "string" },
+        "webcamUrl": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "sessionId", "examId", "studentId", "type", "severity", "timestamp"]
+    },
+    "Signaling": {
+      "title": "Signaling",
+      "description": "WebRTC offer/answer/candidate document for peer streaming via Firestore",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "examId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "type": { "type": "string" },
+        "data": { "type": "object" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "examId", "sessionId", "studentId", "type"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile with role definition"
+    },
+    "/exams/{examId}": {
+      "schema": { "$ref": "#/entities/Exam" },
+      "description": "Proctored exams collection"
+    },
+    "/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/Session" },
+      "description": "Candidate exam sessions"
+    },
+    "/violations/{violationId}": {
+      "schema": { "$ref": "#/entities/Violation" },
+      "description": "Proctoring violations and screenshots"
+    },
+    "/signaling/{signalingId}": {
+      "schema": { "$ref": "#/entities/Signaling" },
+      "description": "WebRTC signaling messages between invigilator and student"
+    }
+  }
+}

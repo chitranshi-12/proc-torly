@@ -1,0 +1,12 @@
+{
+  "name": "Proctorly - AI Online Exam Proctoring System",
+  "description": "Proctorly - Complete enterprise-grade online exam proctoring system with real-time AI face/object detection, WebRTC live invigilation, browser lock enforcement, and compliance audit reports.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "display-capture"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

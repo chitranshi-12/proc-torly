@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default Deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && request.auth.token.email == "chitranshitiwari1209@gmail.com";
+    }
+
+    function isInvigilator() {
+      return isSignedIn() && (
+        isBootstrappedAdmin() ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "invigilator" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Test connection doc
+    match /test/{docId} {
+      allow read: if true;
+      allow write: if isInvigilator();
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isInvigilator());
+      allow list: if isInvigilator();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))) ||
+        isInvigilator()
+      );
+      allow delete: if isInvigilator();
+    }
+
+    // Exams Collection: Anyone can read exams to verify exam code
+    match /exams/{examId} {
+      allow get: if true;
+      allow list: if true;
+      allow create, update, delete: if isInvigilator();
+    }
+
+    // Candidate Sessions Collection
+    match /sessions/{sessionId} {
+      allow get: if isSignedIn() && (resource.data.studentId == request.auth.uid || isInvigilator());
+      allow list: if isSignedIn() && (resource.data.studentId == request.auth.uid || isInvigilator());
+      allow create: if isSignedIn() && request.resource.data.studentId == request.auth.uid && isValidId(sessionId);
+      allow update: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid ||
+        isInvigilator()
+      );
+      allow delete: if isInvigilator();
+    }
+
+    // Violations Collection
+    match /violations/{violationId} {
+      allow get: if isSignedIn() && (resource.data.studentId == request.auth.uid || isInvigilator());
+      allow list: if isSignedIn() && (resource.data.studentId == request.auth.uid || isInvigilator());
+      allow create: if isSignedIn() && request.resource.data.studentId == request.auth.uid && isValidId(violationId);
+      allow update, delete: if isInvigilator();
+    }
+
+    // WebRTC Signaling Collection
+    match /signaling/{signalingId} {
+      allow read, write: if isSignedIn() && isValidId(signalingId);
+    }
+  }
+}
