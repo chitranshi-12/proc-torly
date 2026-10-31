@@ -50,6 +50,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   // Auth
   login: (credentials: any) => request<any>('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
+  loginWithGoogle: (idToken: string) =>
+    request<any>('/auth/firebase/google', { method: 'POST', body: JSON.stringify({ idToken }) }),
   register: (payload: any) => request<any>('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   getMe: () => request<any>('/auth/me'),
 

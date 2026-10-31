@@ -98,6 +98,13 @@ OmniProctor features a zero-credential **Interactive Demo Mode** that runs out o
    firebase deploy --only firestore:rules
    ```
 
+### 3. Google Sign-In for Teachers
+The teacher portal's **Continue with Google** button uses the Firebase project configured in `firebase-applet-config.json`; a separate Google OAuth client secret is not required.
+1. In [Firebase Console](https://console.firebase.google.com/), open **Authentication → Sign-in method** and enable **Google**. Choose a support email and save.
+2. Under **Authentication → Settings → Authorized domains**, add `localhost` for local development and the deployed domain when hosting the app.
+3. Ensure the `apiKey`, `projectId`, and `authDomain` in `firebase-applet-config.json` belong to that Firebase project.
+4. Restart the server. Google sign-in creates a teacher/invigilator account on first use; existing accounts with the same email keep their current role.
+
 ---
 
 ## 📂 Key File Structure

@@ -4,17 +4,15 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { Server as SocketIOServer } from 'socket.io';
-import { google } from 'googleapis';
 import { DB } from './db.js';
 import { generateToken, authMiddleware, AuthUser } from './auth.js';
 
-const APP_URL = process.env.APP_URL || 'http://localhost:3000';
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-const GOOGLE_REDIRECT_URI = `${APP_URL}/api/auth/google/callback`;
-
-function createOAuth2Client() {
-  return new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+function getFirebaseApiKey(): string {
+  if (process.env.FIREBASE_API_KEY) return process.env.FIREBASE_API_KEY;
+  const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as { apiKey?: string };
+  if (!config.apiKey) throw new Error('Firebase apiKey is missing from firebase-applet-config.json.');
+  return config.apiKey;
 }
 
 export function createApiRouter(io: SocketIOServer): Router {
@@ -40,79 +38,6 @@ export function createApiRouter(io: SocketIOServer): Router {
       return null;
     }
   }
-
-  // ==========================================
-  // GOOGLE OAUTH2
-  // ==========================================
-
-  // Step 1: Redirect browser to Google consent screen
-  router.get('/auth/google', (req: Request, res: Response) => {
-    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-      return res.redirect(
-        `/?auth_error=${encodeURIComponent('Google OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your .env file.')}`
-      );
-    }
-    const oauth2Client = createOAuth2Client();
-    const url = oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: ['openid', 'email', 'profile'],
-      prompt: 'select_account'
-    });
-    res.redirect(url);
-  });
-
-  // Step 2: Google redirects back here with ?code=
-  router.get('/auth/google/callback', async (req: Request, res: Response) => {
-    const { code, error } = req.query as { code?: string; error?: string };
-
-    if (error || !code) {
-      return res.redirect(`/?auth_error=${encodeURIComponent(error || 'Google sign-in was cancelled.')}`);
-    }
-
-    try {
-      const oauth2Client = createOAuth2Client();
-      const { tokens } = await oauth2Client.getToken(code);
-      oauth2Client.setCredentials(tokens);
-
-      // Fetch user profile from Google
-      const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
-      const { data: profile } = await oauth2.userinfo.get();
-
-      if (!profile.email) {
-        return res.redirect(`/?auth_error=${encodeURIComponent('Could not retrieve email from Google account.')}`);
-      }
-
-      const email = profile.email.toLowerCase();
-      const name = profile.name || email.split('@')[0];
-      const googleId = profile.id || '';
-
-      // Find or create user in local SQLite DB
-      let user = await DB.queryOne<any>('SELECT * FROM users WHERE email = ?', [email]);
-      if (!user) {
-        const id = crypto.randomUUID();
-        // No password needed for Google users — store a random hash
-        const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
-        await DB.run(
-          'INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [id, name, email, passwordHash, 'invigilator', new Date().toISOString()]
-        );
-        user = await DB.queryOne<any>('SELECT * FROM users WHERE id = ?', [id]);
-      }
-
-      const token = generateToken({ id: user.id, email: user.email, name: user.name, role: user.role });
-
-      // Redirect to frontend with token in URL fragment (never in query string)
-      res.redirect(`/?auth_token=${encodeURIComponent(token)}&auth_name=${encodeURIComponent(user.name)}&auth_email=${encodeURIComponent(user.email)}&auth_role=${encodeURIComponent(user.role)}&auth_id=${encodeURIComponent(user.id)}`);
-    } catch (err: any) {
-      console.error('Google OAuth callback error:', err.message);
-      res.redirect(`/?auth_error=${encodeURIComponent('Google sign-in failed. Please try again.')}`);
-    }
-  });
-
-  // Check if Google OAuth is configured
-  router.get('/auth/google/status', (req: Request, res: Response) => {
-    res.json({ configured: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) });
-  });
 
   // ==========================================
   // AUTHENTICATION
@@ -152,6 +77,65 @@ export function createApiRouter(io: SocketIOServer): Router {
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/auth/firebase/google', async (req: Request, res: Response) => {
+    const { idToken } = req.body as { idToken?: unknown };
+    if (typeof idToken !== 'string' || idToken.length === 0 || idToken.length > 10_000) {
+      return res.status(400).json({ error: 'A valid Google sign-in token is required.' });
+    }
+
+    try {
+      const apiKey = getFirebaseApiKey();
+      const verification = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        }
+      );
+      const result = await verification.json() as {
+        users?: Array<{
+          localId?: string;
+          email?: string;
+          emailVerified?: boolean;
+          displayName?: string;
+        }>;
+        error?: { message?: string };
+      };
+
+      if (!verification.ok) {
+        console.error('Firebase Google token verification failed:', result.error?.message || verification.status);
+        return res.status(401).json({ error: 'Google sign-in could not be verified. Please try again.' });
+      }
+
+      const profile = result.users?.[0];
+      if (!profile?.localId || !profile.email || !profile.emailVerified) {
+        return res.status(401).json({ error: 'Google sign-in must use a verified email address.' });
+      }
+
+      const email = profile.email.trim().toLowerCase();
+      let user = await DB.queryOne<any>('SELECT * FROM users WHERE email = ?', [email]);
+      if (!user) {
+        const id = crypto.randomUUID();
+        const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+        await DB.run(
+          'INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [id, profile.displayName?.trim() || email.split('@')[0], email, passwordHash, 'invigilator', new Date().toISOString()]
+        );
+        user = await DB.queryOne<any>('SELECT * FROM users WHERE id = ?', [id]);
+      }
+
+      const token = generateToken({ id: user.id, email: user.email, name: user.name, role: user.role });
+      return res.json({
+        token,
+        user: { id: user.id, name: user.name, email: user.email, role: user.role }
+      });
+    } catch (error) {
+      console.error('Firebase Google sign-in failed:', error);
+      return res.status(500).json({ error: 'Google sign-in is unavailable. Check the Firebase project configuration and try again.' });
     }
   });
 

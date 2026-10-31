@@ -5,7 +5,7 @@
  * Teacher & Invigilator Portal Entry
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ShieldAlert,
   Sparkles,
@@ -19,6 +19,7 @@ import {
   LogIn
 } from 'lucide-react';
 import { api, setAuthToken } from '../services/api';
+import { firebaseExamService } from '../services/firebaseExamService';
 import { ProctorlyLogo } from './ProctorlyLogo';
 
 interface AdminLoginProps {
@@ -34,6 +35,54 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess, onLaunchDemo 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const finishGoogleLogin = async (result: { user: { getIdToken: () => Promise<string> }; role: string }) => {
+    if (result.role === 'student') {
+      await firebaseExamService.logout();
+      throw new Error('This Google account is registered as a student and cannot access the teacher portal.');
+    }
+
+    const idToken = await result.user.getIdToken();
+    const response = await api.loginWithGoogle(idToken);
+    setAuthToken(response.token);
+    onSuccess(response.user);
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authError = params.get('auth_error');
+    if (!authError) return;
+
+    setError(authError);
+    params.delete('auth_error');
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
+    );
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    firebaseExamService.completeGoogleSignInRedirect()
+      .then(async (result) => {
+        if (!result || !active) return;
+        setLoading(true);
+        try {
+          await finishGoogleLogin(result);
+        } catch (err: any) {
+          if (active) setError(err.message || 'Google sign-in failed. Please try again.');
+        } finally {
+          if (active) setLoading(false);
+        }
+      })
+      .catch((err: Error) => {
+        if (active) setError(err.message || 'Google sign-in failed. Please try again.');
+      });
+
+    return () => { active = false; };
+  }, []);
 
   const fillAdmin = () => {
     setEmail('admin@proctor.edu');
@@ -66,6 +115,22 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess, onLaunchDemo 
       }
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const result = await firebaseExamService.loginInvigilatorWithGoogle();
+      if (!result) return;
+      await finishGoogleLogin(result);
+    } catch (err: any) {
+      setError(err.message || 'Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -233,6 +298,34 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess, onLaunchDemo 
               )}
             </button>
           </form>
+
+          {!isSignUp && (
+            <>
+              <div className="flex items-center gap-3 my-5">
+                <div className="h-px flex-1 bg-slate-800" />
+                <span className="text-[10px] uppercase tracking-wider text-slate-500">or</span>
+                <div className="h-px flex-1 bg-slate-800" />
+              </div>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleGoogleSignIn}
+                className="w-full py-3 rounded-xl text-sm font-semibold text-slate-100 bg-slate-950 border border-slate-700 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-3"
+              >
+                {loading ? (
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <svg aria-hidden="true" viewBox="0 0 48 48" className="w-5 h-5">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" />
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.77 7.18l7.73 6C44.4 38.01 46.98 31.9 46.98 24.55Z" />
+                    <path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.9 23.9 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.97-6.19Z" />
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.8l-7.73-6c-2.14 1.44-4.88 2.3-8.17 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 43.62 14.62 48 24 48Z" />
+                  </svg>
+                )}
+                Continue with Google
+              </button>
+            </>
+          )}
 
           {/* Default credentials hint */}
           {!isSignUp && (

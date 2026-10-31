@@ -36,6 +36,8 @@ import { auth, db, storage, handleFirestoreError, OperationType } from './fireba
 const GOOGLE_REDIRECT_PENDING_KEY = 'omni_google_redirect_pending';
 const GOOGLE_REDIRECT_TIMESTAMP_KEY = 'omni_google_redirect_ts';
 const REDIRECT_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+type GoogleSignInResult = { user: FirebaseUser; role: string };
+let googleRedirectCompletion: Promise<GoogleSignInResult | null> | null = null;
 
 function getGoogleSignInErrorMessage(error: unknown): string {
   const code = error instanceof FirebaseError ? error.code : '';
@@ -98,22 +100,26 @@ export const firebaseExamService = {
     return true;
   },
 
-  async completeGoogleSignInRedirect() {
+  completeGoogleSignInRedirect(): Promise<GoogleSignInResult | null> {
     // Always call getRedirectResult — Firebase returns null if there's no pending redirect.
     // We don't gate on hasPendingGoogleRedirect() here so that a redirect that cleared
     // sessionStorage mid-flight (mobile/incognito) is still handled.
-    try {
-      const credential = await getRedirectResult(auth);
-      sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
-      sessionStorage.removeItem(GOOGLE_REDIRECT_TIMESTAMP_KEY);
-      if (!credential) return null;
-      // Upsert the Firestore user doc and return
-      return this._upsertInvigilatorDoc(credential.user);
-    } catch (error) {
-      sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
-      sessionStorage.removeItem(GOOGLE_REDIRECT_TIMESTAMP_KEY);
-      throw new Error(getGoogleSignInErrorMessage(error));
+    if (!googleRedirectCompletion) {
+      googleRedirectCompletion = (async () => {
+        try {
+          const credential = await getRedirectResult(auth);
+          sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+          sessionStorage.removeItem(GOOGLE_REDIRECT_TIMESTAMP_KEY);
+          if (!credential) return null;
+          return this._upsertInvigilatorDoc(credential.user);
+        } catch (error) {
+          sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+          sessionStorage.removeItem(GOOGLE_REDIRECT_TIMESTAMP_KEY);
+          throw new Error(getGoogleSignInErrorMessage(error));
+        }
+      })();
     }
+    return googleRedirectCompletion;
   },
 
   // Popup with automatic fallback to redirect when popups are blocked.
