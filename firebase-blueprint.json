@@ -27,10 +27,34 @@
         "startTime": { "type": "string" },
         "endTime": { "type": "string" },
         "createdBy": { "type": "string" },
-        "questions": { "type": "array" },
         "createdAt": { "type": "string" }
       },
       "required": ["id", "code", "title", "durationMinutes", "startTime", "endTime", "createdBy"]
+    },
+    "ExamQuestion": {
+      "title": "ExamQuestion",
+      "description": "Candidate-visible question without its correct answer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "question": { "type": "string" },
+        "optionA": { "type": "string" },
+        "optionB": { "type": "string" },
+        "optionC": { "type": "string" },
+        "optionD": { "type": "string" },
+        "marks": { "type": "number" },
+        "orderNum": { "type": "number" }
+      },
+      "required": ["id", "question", "optionA", "optionB", "marks"]
+    },
+    "AnswerKey": {
+      "title": "AnswerKey",
+      "description": "Private grading key readable only by invigilators and the trusted API",
+      "type": "object",
+      "properties": {
+        "correctAnswer": { "type": "string" }
+      },
+      "required": ["correctAnswer"]
     },
     "Session": {
       "title": "Session",
@@ -102,6 +126,14 @@
     "/exams/{examId}": {
       "schema": { "$ref": "#/entities/Exam" },
       "description": "Proctored exams collection"
+    },
+    "/exams/{examId}/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/ExamQuestion" },
+      "description": "Candidate-visible question data"
+    },
+    "/exams/{examId}/answerKeys/{questionId}": {
+      "schema": { "$ref": "#/entities/AnswerKey" },
+      "description": "Private answer key used by the Render grading API"
     },
     "/sessions/{sessionId}": {
       "schema": { "$ref": "#/entities/Session" },

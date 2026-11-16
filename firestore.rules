@@ -1,83 +1,134 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Default Deny Catch-all
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isBootstrappedAdmin() {
-      return isSignedIn() && request.auth.token.email == "chitranshitiwari1209@gmail.com";
+    function userRole(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role;
     }
 
     function isInvigilator() {
-      return isSignedIn() && (
-        isBootstrappedAdmin() ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "invigilator" ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"))
-      );
+      return isSignedIn() &&
+        (userRole(request.auth.uid) == 'invigilator' || userRole(request.auth.uid) == 'admin');
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function ownsSession(sessionId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/sessions/$(sessionId)).data.studentId == request.auth.uid;
     }
 
-    // Test connection doc
+    function canAccessSession(sessionId) {
+      return isInvigilator() || ownsSession(sessionId);
+    }
+
     match /test/{docId} {
       allow read: if true;
       allow write: if isInvigilator();
     }
 
-    // Users Collection
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isInvigilator());
       allow list: if isInvigilator();
-      allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
-      allow update: if isSignedIn() && (
-        (request.auth.uid == userId && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))) ||
-        isInvigilator()
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.id == userId
+        && request.resource.data.role in ['student', 'pending'];
+      allow update: if isInvigilator() || (
+        isSignedIn()
+        && request.auth.uid == userId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'id', 'email'])
       );
       allow delete: if isInvigilator();
     }
 
-    // Exams Collection: Anyone can read exams to verify exam code
     match /exams/{examId} {
-      allow get: if true;
-      allow list: if true;
+      allow get, list: if isInvigilator();
       allow create, update, delete: if isInvigilator();
+
+      match /questions/{questionId} {
+        allow read, write: if isInvigilator();
+      }
+
+      match /answerKeys/{questionId} {
+        allow read, write: if isInvigilator();
+      }
     }
 
-    // Candidate Sessions Collection
     match /sessions/{sessionId} {
-      allow get: if isSignedIn() && (resource.data.studentId == request.auth.uid || isInvigilator());
-      allow list: if isSignedIn() && (resource.data.studentId == request.auth.uid || isInvigilator());
-      allow create: if isSignedIn() && request.resource.data.studentId == request.auth.uid && isValidId(sessionId);
-      allow update: if isSignedIn() && (
-        resource.data.studentId == request.auth.uid ||
-        isInvigilator()
+      allow get, list: if isInvigilator() ||
+        (isSignedIn() && resource.data.studentId == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.id == sessionId
+        && request.resource.data.status == 'registered'
+        && request.resource.data.score == null
+        && request.resource.data.riskScore == 0
+        && request.resource.data.violationCount == 0;
+      allow update: if isInvigilator() || (
+        isSignedIn()
+        && resource.data.studentId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'consentAgreed',
+          'consentTimestamp',
+          'referencePhotoUrl',
+          'status',
+          'isOnline',
+          'lastHeartbeat',
+          'violationCount',
+          'lastViolationAt'
+        ])
+        && request.resource.data.status in ['registered', 'waiting', 'in_progress']
+        && (
+          request.resource.data.status == resource.data.status ||
+          (resource.data.status == 'registered' && request.resource.data.status == 'waiting')
+        )
       );
       allow delete: if isInvigilator();
     }
 
-    // Violations Collection
     match /violations/{violationId} {
-      allow get: if isSignedIn() && (resource.data.studentId == request.auth.uid || isInvigilator());
-      allow list: if isSignedIn() && (resource.data.studentId == request.auth.uid || isInvigilator());
-      allow create: if isSignedIn() && request.resource.data.studentId == request.auth.uid && isValidId(violationId);
+      allow get, list: if isInvigilator();
+      allow create: if isSignedIn()
+        && request.resource.data.studentId == request.auth.uid
+        && ownsSession(request.resource.data.sessionId)
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'sessionId',
+          'examId',
+          'studentId',
+          'studentName',
+          'rollNo',
+          'type',
+          'severity',
+          'description',
+          'screenImageUrl',
+          'camImageUrl',
+          'timestamp'
+        ]);
       allow update, delete: if isInvigilator();
     }
 
-    // WebRTC Signaling Collection
     match /signaling/{signalingId} {
-      allow read, write: if isSignedIn() && isValidId(signalingId);
+      allow read: if canAccessSession(signalingId);
+      allow create: if isInvigilator()
+        && request.resource.data.sessionId == signalingId;
+      allow update: if isInvigilator() || (
+        ownsSession(signalingId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answer', 'updatedAt'])
+      );
+      allow delete: if isInvigilator();
+
+      match /offerCandidates/{candidateId} {
+        allow read: if canAccessSession(signalingId);
+        allow create, update, delete: if isInvigilator();
+      }
+
+      match /answerCandidates/{candidateId} {
+        allow read: if canAccessSession(signalingId);
+        allow create, update, delete: if ownsSession(signalingId);
+      }
     }
   }
 }

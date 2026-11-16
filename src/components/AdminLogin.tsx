@@ -2,50 +2,53 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Teacher & Invigilator Portal Entry
+ * exam.co Teacher & Invigilator Portal Entry (White-Theme SaaS Design)
  */
 
 import React, { useEffect, useState } from 'react';
 import {
   ShieldAlert,
-  Sparkles,
   ArrowRight,
   ShieldCheck,
-  Video,
-  Monitor,
   Zap,
-  CheckCircle2,
-  UserPlus,
-  LogIn
+  ArrowLeft
 } from 'lucide-react';
 import { api, setAuthToken } from '../services/api';
 import { firebaseExamService } from '../services/firebaseExamService';
-import { ProctorlyLogo } from './ProctorlyLogo';
+import { ExamCoLogo } from './ExamCoLogo';
 
 interface AdminLoginProps {
   onSuccess: (user: any) => void;
   onLaunchDemo: () => void;
+  onBackToHome?: () => void;
 }
 
-export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess, onLaunchDemo }) => {
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+export const AdminLogin: React.FC<AdminLoginProps> = ({
+  onSuccess,
+  onLaunchDemo,
+  onBackToHome
+}) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
-  const finishGoogleLogin = async (result: { user: { getIdToken: () => Promise<string> }; role: string }) => {
-    if (result.role === 'student') {
-      await firebaseExamService.logout();
-      throw new Error('This Google account is registered as a student and cannot access the teacher portal.');
-    }
-
+  const finishGoogleLogin = async (result: { user: { getIdToken: () => Promise<string> }; role?: string }) => {
     const idToken = await result.user.getIdToken();
-    const response = await api.loginWithGoogle(idToken);
-    setAuthToken(response.token);
-    onSuccess(response.user);
+    setAuthToken(idToken);
+
+    try {
+      const response = await api.getMe();
+      onSuccess(response.user);
+    } catch (apiErr: any) {
+      console.warn('Backend teacher sync note:', apiErr.message);
+      // Fallback user object from Firebase auth if backend is still establishing initial connection
+      const fallbackUser = {
+        id: (result.user as any).uid || 'teacher',
+        name: (result.user as any).displayName || 'Teacher',
+        email: (result.user as any).email || 'teacher@exam.co',
+        role: 'teacher'
+      };
+      onSuccess(fallbackUser);
+    }
   };
 
   useEffect(() => {
@@ -65,7 +68,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess, onLaunchDemo 
 
   useEffect(() => {
     let active = true;
-    firebaseExamService.completeGoogleSignInRedirect()
+    firebaseExamService
+      .completeGoogleSignInRedirect()
       .then(async (result) => {
         if (!result || !active) return;
         setLoading(true);
@@ -81,54 +85,19 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess, onLaunchDemo 
         if (active) setError(err.message || 'Google sign-in failed. Please try again.');
       });
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
-
-  const fillAdmin = () => {
-    setEmail('admin@proctor.edu');
-    setPassword('Admin@12345');
-    setIsSignUp(false);
-    setError(null);
-    setSuccess(null);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      if (isSignUp) {
-        if (!name.trim()) {
-          setError('Please enter your full name.');
-          return;
-        }
-        const res = await api.register({ name: name.trim(), email: email.trim().toLowerCase(), password, role: 'invigilator' });
-        setAuthToken(res.token);
-        setSuccess('Account created! Signing you in...');
-        setTimeout(() => onSuccess(res.user), 500);
-      } else {
-        const res = await api.login({ email: email.trim().toLowerCase(), password });
-        setAuthToken(res.token);
-        onSuccess(res.user);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials and try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
-    setSuccess(null);
 
     try {
-      const result = await firebaseExamService.loginInvigilatorWithGoogle();
-      if (!result) return;
-      await finishGoogleLogin(result);
+      const result = await firebaseExamService.signInWithGoogle();
+      if (!result) return; // redirected or completed
+      await finishGoogleLogin({ user: result });
     } catch (err: any) {
       setError(err.message || 'Google sign-in failed. Please try again.');
     } finally {
@@ -137,219 +106,90 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess, onLaunchDemo 
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-950">
-
-      {/* Header */}
+    <div className="min-h-screen flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-50 text-slate-900 selection:bg-indigo-500 selection:text-white">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="flex justify-center mb-5">
-          <ProctorlyLogo size="lg" showText={true} />
+        <div className="flex justify-center mb-6 cursor-pointer" onClick={onBackToHome}>
+          <ExamCoLogo size="lg" theme="light" />
         </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">
-          Teacher &amp; Invigilator Portal
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          Teacher Portal
         </h1>
-        <p className="mt-2 text-sm text-slate-400">
-          Manage proctored exams and monitor live candidates.
+        <p className="mt-2 text-sm text-slate-600">
+          Sign in to manage examinations, monitor candidates, and export results.
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md space-y-4">
+        {/* Error Alert */}
+        {error && (
+          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-start gap-3 shadow-xs">
+            <ShieldAlert className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
+            <div className="flex-1 font-medium">{error}</div>
+          </div>
+        )}
 
-        {/* ── Demo Mode Card ── */}
-        <div className="bg-gradient-to-r from-indigo-950/80 via-slate-900 to-cyan-950/80 border border-indigo-500/40 rounded-2xl p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">
-                  Zero Setup
-                </span>
-                <span className="text-xs font-bold text-white">Interactive Demo</span>
+        {/* ── Main Login Card ── */}
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/50">
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-200 hover:border-slate-300 text-slate-900 font-bold text-sm shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>{loading ? 'Authenticating with Google...' : 'Continue with Google'}</span>
+            </button>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200" />
               </div>
-              <p className="text-xs text-slate-400">
-                6 simulated students · live violation alerts · audio chimes · no login needed
-              </p>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-3 text-slate-500 font-bold tracking-wider">Or explore demo</span>
+              </div>
             </div>
+
             <button
               type="button"
               onClick={onLaunchDemo}
-              className="shrink-0 py-2.5 px-5 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100/70 text-indigo-700 text-sm font-bold transition-all cursor-pointer active:scale-95"
             >
-              <Zap className="w-4 h-4 fill-slate-950" />
-              Launch Demo
+              <Zap className="w-4 h-4 text-indigo-600" />
+              <span>Launch Teacher Interactive Demo</span>
             </button>
           </div>
         </div>
 
-        {/* ── Login / Register Card ── */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-
-          {/* Tab toggle */}
-          <div className="flex gap-2 mb-5 p-1 bg-slate-950 rounded-xl border border-slate-800">
+        {onBackToHome && (
+          <div className="text-center pt-2">
             <button
               type="button"
-              onClick={() => { setIsSignUp(false); setError(null); setSuccess(null); }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                !isSignUp ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'
-              }`}
+              onClick={onBackToHome}
+              className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
             >
-              <LogIn className="w-3.5 h-3.5" />
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => { setIsSignUp(true); setError(null); setSuccess(null); }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                isSignUp ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              Register
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to exam.co home</span>
             </button>
           </div>
-
-          {/* Error */}
-          {error && (
-            <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
-              <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Success */}
-          {success && (
-            <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-              <span>{success}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Name — only for register */}
-            {isSignUp && (
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Prof. David Vance"
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition"
-                />
-              </div>
-            )}
-
-            {/* Email */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                Email
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="teacher@institution.edu"
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition"
-              />
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition"
-              />
-            </div>
-
-            {/* Quick fill for sign-in mode */}
-            {!isSignUp && (
-              <button
-                type="button"
-                onClick={fillAdmin}
-                className="text-xs text-indigo-400 hover:text-cyan-300 flex items-center gap-1 font-medium cursor-pointer transition-colors"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Use default admin credentials
-              </button>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-xl text-white bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>
-                  <span>{isSignUp ? 'Create Account & Enter' : 'Sign In to Dashboard'}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-
-          {!isSignUp && (
-            <>
-              <div className="flex items-center gap-3 my-5">
-                <div className="h-px flex-1 bg-slate-800" />
-                <span className="text-[10px] uppercase tracking-wider text-slate-500">or</span>
-                <div className="h-px flex-1 bg-slate-800" />
-              </div>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleGoogleSignIn}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-slate-100 bg-slate-950 border border-slate-700 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-3"
-              >
-                {loading ? (
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <svg aria-hidden="true" viewBox="0 0 48 48" className="w-5 h-5">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" />
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.77 7.18l7.73 6C44.4 38.01 46.98 31.9 46.98 24.55Z" />
-                    <path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.9 23.9 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.97-6.19Z" />
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.8l-7.73-6c-2.14 1.44-4.88 2.3-8.17 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 43.62 14.62 48 24 48Z" />
-                  </svg>
-                )}
-                Continue with Google
-              </button>
-            </>
-          )}
-
-          {/* Default credentials hint */}
-          {!isSignUp && (
-            <p className="mt-4 text-center text-xs text-slate-600">
-              Default: <span className="text-slate-500">admin@proctor.edu</span> / <span className="text-slate-500">Admin@12345</span>
-            </p>
-          )}
-        </div>
-
-        {/* Feature pills */}
-        <div className="grid grid-cols-3 gap-2 text-center text-xs text-slate-500">
-          <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
-            <Monitor className="w-4 h-4 text-cyan-500 mx-auto mb-1" />
-            WebRTC Screen View
-          </div>
-          <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
-            <Video className="w-4 h-4 text-indigo-400 mx-auto mb-1" />
-            AI Face Detection
-          </div>
-          <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
-            Full Audit Logs
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

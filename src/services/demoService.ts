@@ -7,6 +7,8 @@
  */
 
 import { ExamData, Question } from './firebaseExamService';
+import { audioNotificationService, playThreatAlertChime } from './audioNotificationService';
+export { playThreatAlertChime };
 
 export interface DemoCandidateSession {
   id: string;
@@ -166,40 +168,6 @@ function generateMockCamSVG(studentName: string, violationType: string): string 
   </svg>`;
 
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-// Play pleasant dual-frequency audio chime for invigilator threat alerts
-export function playThreatAlertChime() {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, ctx.currentTime); // A5
-    osc1.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.15); // E6
-
-    osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(440, ctx.currentTime);
-    osc2.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
-
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-
-    osc1.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc1.start();
-    osc2.start();
-    osc1.stop(ctx.currentTime + 0.4);
-    osc2.stop(ctx.currentTime + 0.4);
-  } catch (e) {
-    // Audio might require user interaction first
-  }
 }
 
 // Default Seed Exam
@@ -481,7 +449,6 @@ class DemoServiceManager {
   constructor() {
     this.initStorage();
     this.initBroadcastChannel();
-    this.startSimulation();
   }
 
   private initStorage() {
@@ -615,7 +582,6 @@ class DemoServiceManager {
       localStorage.setItem('omni_demo_students', JSON.stringify(this.students));
     } catch (e) {}
 
-    playThreatAlertChime();
     this.notify();
 
     // Broadcast across tabs
@@ -727,9 +693,39 @@ class DemoServiceManager {
     let scored = 0;
     let total = 0;
     questions.forEach((q) => {
-      total += q.marks || 1;
-      if (answers[q.id]?.toUpperCase() === q.correctAnswer?.toUpperCase()) {
-        scored += q.marks || 1;
+      const qMarks = Number(q.marks) || 1;
+      total += qMarks;
+      const given = answers[q.id];
+      if (given !== undefined && given !== null && q.correctAnswer !== undefined && q.correctAnswer !== null) {
+        if (q.type === 'multiple_select') {
+          const studentSet = Array.isArray(given)
+            ? given.map((x: any) => String(x).trim().toUpperCase()).filter(Boolean)
+            : String(given).split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+          const studentSorted = Array.from(new Set(studentSet)).sort();
+
+          const correctSet = Array.isArray(q.correctAnswer)
+            ? q.correctAnswer.map((x: any) => String(x).trim().toUpperCase()).filter(Boolean)
+            : String(q.correctAnswer).split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+          const correctSorted = Array.from(new Set(correctSet)).sort();
+
+          if (
+            studentSorted.length > 0 &&
+            studentSorted.length === correctSorted.length &&
+            studentSorted.every((val, idx) => val === correctSorted[idx])
+          ) {
+            scored += qMarks;
+          }
+        } else if (q.type === 'short_answer') {
+          const studentStr = String(given).trim().toLowerCase();
+          const correctStr = String(q.correctAnswer).trim().toLowerCase();
+          if (studentStr.length > 0 && (studentStr === correctStr || (correctStr.length > 0 && studentStr.includes(correctStr)))) {
+            scored += qMarks;
+          }
+        } else {
+          if (String(given).trim().toUpperCase() === String(q.correctAnswer).trim().toUpperCase()) {
+            scored += qMarks;
+          }
+        }
       }
     });
 
@@ -788,7 +784,6 @@ class DemoServiceManager {
         student.riskScore = Math.min(100, student.riskScore + (violation.severity === 'CRITICAL' ? 25 : 15));
         student.latestViolation = violation;
       }
-      playThreatAlertChime();
       this.notify();
     }
   }
@@ -811,8 +806,15 @@ class DemoServiceManager {
     }
   }
 
-  // Background randomized simulation to make the Invigilator Dashboard alive
-  private startSimulation() {
+  public stopSimulation() {
+    if (this.simulationInterval) {
+      clearInterval(this.simulationInterval);
+      this.simulationInterval = null;
+    }
+  }
+
+  // Background randomized simulation for demonstration when explicitly requested
+  public startSimulation() {
     if (this.simulationInterval) return;
 
     this.simulationInterval = setInterval(() => {

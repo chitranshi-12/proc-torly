@@ -2,22 +2,16 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * Top Navigation Bar
+ * exam.co Global Navigation Bar (White-Theme SaaS Design)
  */
 
 import React from 'react';
 import {
-  ShieldCheck,
-  UserCheck,
   LogOut,
-  BookOpen,
-  Sparkles,
   ExternalLink,
-  Zap,
-  RotateCcw
+  ShieldCheck
 } from 'lucide-react';
-
-import { ProctorlyLogo } from './ProctorlyLogo';
+import { ExamCoLogo } from './ExamCoLogo';
 
 interface NavbarProps {
   currentView: string;
@@ -39,7 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenTestStudentTab
 }) => {
   return (
-    <header className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand */}
         <div
@@ -47,104 +41,79 @@ export const Navbar: React.FC<NavbarProps> = ({
             if (adminUser || isDemo) {
               onNavigate('admin_exams');
             } else {
-              onNavigate('admin_login');
+              onNavigate('landing');
             }
           }}
-          className="flex items-center gap-3 cursor-pointer group"
+          className="cursor-pointer"
         >
-          <ProctorlyLogo size="sm" showText={false} />
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-lg tracking-tight text-white font-sans">
-                Proctor<span className="text-cyan-400">ly</span>
-              </span>
-              <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800/60">
-                Teacher Console
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 hidden sm:block">AI Vision & WebRTC Online Exam Proctoring</p>
-          </div>
+          <ExamCoLogo size="md" theme="light" />
         </div>
 
-        {/* Right side Actions */}
+        {/* Center / Right controls */}
         <div className="flex items-center gap-3">
-          {/* Demo Mode Badge and Sync Button */}
+          {/* Demo Badge & Exit Button */}
           {isDemo && (
-            <div className="flex items-center gap-2">
-              <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-700/60 text-xs font-semibold">
-                <Zap className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400" />
-                <span>Simulation Active (6 Candidates)</span>
-              </div>
-
-              {onOpenTestStudentTab && (
-                <button
-                  onClick={onOpenTestStudentTab}
-                  className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
-                  title="Open a second tab to test candidate experience"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Test Student View</span>
-                </button>
-              )}
-
+            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl">
+              <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+              <span className="text-xs font-bold text-indigo-900">Demo Environment</span>
               {onExitDemo && (
                 <button
+                  type="button"
                   onClick={onExitDemo}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-rose-950 hover:text-rose-300 text-slate-300 rounded-lg text-xs font-semibold border border-slate-700 hover:border-rose-700 transition-colors cursor-pointer"
-                  title="Exit demo and connect to Live Cloud Firestore"
+                  className="ml-1 text-[11px] text-indigo-700 hover:text-indigo-950 font-semibold underline cursor-pointer"
                 >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Exit Demo</span>
+                  Exit Demo
                 </button>
               )}
             </div>
           )}
 
-          {/* Navigation modes */}
-          {adminUser ? (
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => onNavigate('admin_exams')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1.5 ${
-                  currentView.startsWith('admin')
-                    ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300'
-                    : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:text-white'
-                }`}
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>My Exams</span>
-              </button>
+          {/* Test Student Portal shortcut */}
+          {onOpenTestStudentTab && (
+            <button
+              type="button"
+              onClick={onOpenTestStudentTab}
+              title="Open Student Test Window"
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-all cursor-pointer shadow-xs active:scale-95"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Student Window</span>
+            </button>
+          )}
 
-              <div className="h-4 w-px bg-slate-800" />
-
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xs font-bold text-indigo-300">
-                  {adminUser.name ? adminUser.name[0].toUpperCase() : 'T'}
-                </div>
-                <div className="hidden lg:block text-left text-xs">
-                  <div className="font-medium text-slate-200">{adminUser.name}</div>
-                  <div className="text-[10px] text-slate-400">Teacher / Invigilator</div>
-                </div>
-                <button
-                  onClick={onLogoutAdmin}
-                  title="Logout"
-                  className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
+          {/* Teacher User Profile & Logout */}
+          {adminUser && (
+            <div className="flex items-center gap-3 pl-2 sm:pl-3 border-l border-slate-200">
+              <div className="hidden sm:flex flex-col text-right">
+                <span className="text-xs font-bold text-slate-900 leading-tight">
+                  {adminUser.name || 'Teacher'}
+                </span>
+                <span className="text-[11px] text-slate-500 leading-tight">
+                  {adminUser.email || 'teacher@exam.co'}
+                </span>
               </div>
-            </div>
-          ) : !isDemo ? (
-            <div className="flex items-center gap-2">
+
               <button
-                onClick={() => onNavigate('admin_login')}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition-all shadow-sm cursor-pointer"
+                type="button"
+                onClick={onLogoutAdmin}
+                className="p-2 rounded-xl text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-all cursor-pointer"
+                title="Sign out of exam.co"
               >
-                <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Teacher Sign In</span>
+                <LogOut className="w-4 h-4" />
               </button>
             </div>
-          ) : null}
+          )}
+
+          {/* Public Navigation */}
+          {!adminUser && !isDemo && currentView !== 'landing' && (
+            <button
+              type="button"
+              onClick={() => onNavigate('landing')}
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              Back to Home
+            </button>
+          )}
         </div>
       </div>
     </header>

@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: examco-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: DB_NAME
+        value: exam_co
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        value: pure-night-k3kqt
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false

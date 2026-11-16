@@ -5,13 +5,14 @@
 Use this checklist to systematically verify every module and security control of the OmniProctor system.
 
 ### Phase 1: Authentication & Exam Provisioning
-- [x] **Default Admin Access**:
-  - Open `/` in browser, click "Invigilator Sign In" at top right.
-  - Click "Fill Default Admin Credentials" (`admin@proctor.edu` / `Admin@12345`).
-  - Verify successful authentication and redirection to the Examinations Management Console.
-- [x] **Invigilator Registration**:
-  - Click "Create new Invigilator account", input new credentials.
-  - Verify registration succeeds and receives a valid JWT token.
+- [ ] **Firebase Teacher Sign-In**:
+  - Enable Email/Password or Google in Firebase Authentication.
+  - Create a teacher account and confirm its Firestore profile is `pending` until an administrator explicitly assigns `invigilator`.
+  - Verify students cannot assign their own `invigilator` or `admin` role through Firestore.
+  - Verify the Render API accepts the Firebase ID token at `/api/auth/me`.
+- [ ] **Invigilator Registration**:
+  - Click "Register" and create a Firebase Authentication account.
+  - Verify the profile uses Firebase Auth identity and no separate JWT or SQLite user database is used.
 - [x] **Exam Creation (Manual MCQ Form)**:
   - Click "Create New Proctored Exam".
   - Specify title, duration, start/end window, and max violation threshold (e.g., 4).
@@ -20,7 +21,7 @@ Use this checklist to systematically verify every module and security control of
 - [x] **Exam Creation (CSV Import)**:
   - Click "CSV Upload" tab.
   - Download template or paste standard CSV (`question,optA,optB,optC,optD,correct,marks`).
-  - Verify all rows are parsed and stored in the SQLite database.
+  - Verify all rows are stored in Firestore question and answer-key subcollections.
 - [x] **Exam Creation (Google Form JSON & Embed)**:
   - Verify Google Apps Script snippet copy functionality.
   - Paste Google Form JSON to verify batch question insertion.
@@ -36,7 +37,7 @@ Use this checklist to systematically verify every module and security control of
 - [x] **Consent & DPDP Act 2023 Logging**:
   - Review the 4-point proctoring disclosure (Screen, Camera, Audio, Retention).
   - Confirm checkbox is mandatory to enable the Next button.
-  - Verify consent is registered with server ISO timestamp in `exam_sessions`.
+  - Verify consent is registered with an ISO timestamp in the Firestore session document.
 - [x] **Camera & Microphone Verification**:
   - Click "Allow Camera & Microphone".
   - Verify live webcam stream renders in `<video>` element.
@@ -82,7 +83,7 @@ Use this checklist to systematically verify every module and security control of
   - Answer 2 questions.
   - Wait 10 seconds and notice "Saved at [Time]".
   - Refresh the browser tab.
-  - Verify the session state, remaining time, and previously selected answers are restored seamlessly.
+  - Verify the session and previously selected answers are available from Firestore.
 
 ---
 
@@ -129,5 +130,7 @@ Use this checklist to systematically verify every module and security control of
 - Screen share capture specifies `displaySurface: 'monitor'` to prevent partial window isolation attacks.
 
 ### 3. Server-Authoritative Integrity
-- Timers are authoritative on the server. If a candidate alters local computer clock settings or pauses JavaScript execution, the server calculates remaining duration using `(start_time + duration + added_time) - server_now()`.
-- Question grading occurs strictly server-side using the sealed answer key. Correct answers are stripped from all candidate API payloads.
+- Student question lookup is served by the Render API and omits correct answers.
+- Correct answers are stored in Firestore `exams/{examId}/answerKeys/{questionId}` documents, which Firestore rules deny to students.
+- Final scoring is performed by the Render API from the sealed answer-key documents.
+- The displayed countdown runs in the browser, but the Render API timestamps exam starts, rejects answer saves after the server-calculated deadline, and grades only the last server-saved answers if a submission arrives after time expires.

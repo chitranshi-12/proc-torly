@@ -67,6 +67,7 @@ Whenever any cheating violation occurs:
 ## 🚀 Quick Setup & Run Instructions
 
 ### 1. Local Development
+Use Node.js 24.12 or newer.
 ```bash
 # 1. Install dependencies
 npm install
@@ -74,36 +75,47 @@ npm install
 # 2. Start the development server
 npm run dev
 ```
-The app runs on `http://localhost:3000`.
+The app runs on `http://localhost:3000`. To use live teacher authentication, student exam lookup, and server-side grading locally, set `FIREBASE_SERVICE_ACCOUNT_JSON` in your untracked `.env` file to the service account JSON for the same Firebase project. Demo Mode does not require this credential.
 
-### 2. Firebase Configuration (Optional for Cloud Mode)
-OmniProctor features a zero-credential **Interactive Demo Mode** that runs out of the box. To connect your own live Firebase project:
-1. Go to [Firebase Console](https://console.firebase.google.com/) and create a project.
-2. Enable **Authentication** (Google & Email/Password providers).
-3. Enable **Cloud Firestore** and **Cloud Storage**.
-4. Copy your web app config into `firebase-applet-config.json`:
+### 2. Firebase Setup
+Live exams use Firebase Authentication, Cloud Firestore, and Cloud Storage. Demo Mode remains available without Firebase. Configure a Firebase project:
+1. Enable **Authentication** providers for **Google**, **Email/Password**, and **Anonymous** student sessions.
+2. Create the named Firestore database configured in `firebase-applet-config.json`, or change its `firestoreDatabaseId` to `(default)`. Keep that same database ID in `firebase.json` and Render's `FIREBASE_DATABASE_ID`.
+3. Enable **Cloud Storage**. New Cloud Storage buckets may require a billing-enabled Firebase plan; set billing alerts and review Firebase usage charges before real exam data is uploaded.
+4. Put the Firebase web app configuration in `firebase-applet-config.json`:
    ```json
    {
      "projectId": "your-project-id",
      "appId": "your-app-id",
      "apiKey": "your-api-key",
      "authDomain": "your-project-id.firebaseapp.com",
-     "firestoreDatabaseId": "(default)",
+     "firestoreDatabaseId": "your-firestore-database-id",
      "storageBucket": "your-project-id.firebasestorage.app",
      "messagingSenderId": "your-sender-id"
    }
    ```
-5. Deploy security rules:
+5. Deploy the Firestore and Storage rules from this repository with the Firebase CLI:
    ```bash
-   firebase deploy --only firestore:rules
+   firebase deploy --only firestore:rules,storage
    ```
+The app stores question text separately from answer keys. Students receive only public question data; the Render API grades submissions using the private answer-key documents.
 
 ### 3. Google Sign-In for Teachers
-The teacher portal's **Continue with Google** button uses the Firebase project configured in `firebase-applet-config.json`; a separate Google OAuth client secret is not required.
-1. In [Firebase Console](https://console.firebase.google.com/), open **Authentication → Sign-in method** and enable **Google**. Choose a support email and save.
-2. Under **Authentication → Settings → Authorized domains**, add `localhost` for local development and the deployed domain when hosting the app.
-3. Ensure the `apiKey`, `projectId`, and `authDomain` in `firebase-applet-config.json` belong to that Firebase project.
-4. Restart the server. Google sign-in creates a teacher/invigilator account on first use; existing accounts with the same email keep their current role.
+Teacher email/password and Google sign-in both use Firebase Authentication. New teacher registrations receive a `pending` profile and cannot access exams until an administrator changes their `users/{uid}.role` to `invigilator` in Firestore. Never grant a role from the browser; assigning `invigilator` or `admin` exposes all exams and answer keys. Before deploying the new rules, review existing user profiles and remove any teacher roles that were not intentionally granted. Add `localhost` and your Vercel production/preview hostnames under **Authentication → Settings → Authorized domains**.
+
+### 4. Deploy the API to Render
+
+The repository includes an API Blueprint in `render.yaml`. Push the project to GitHub and import it into Vercel first to reserve the frontend hostname; you can add `VITE_API_BASE_URL` after the API is deployed. Then in Render choose **New → Blueprint** and connect that repository. Set the project folder as Render's Root Directory if it is nested in the repository.
+
+The Render service verifies Firebase ID tokens, controls when exam sessions start, saves answers only while the server-side exam deadline is open, securely grades submissions, and returns exam questions without answer keys. Firestore is the application database; Firebase Storage stores captured evidence. No Render disk or SQLite database is needed.
+
+In Render, set the Blueprint's `FIREBASE_SERVICE_ACCOUNT_JSON` to the full JSON key for a Firebase service account. Keep this secret only in Render—never commit it or put it in Vercel. Set `FRONTEND_ORIGINS` to the comma-separated, exact Vercel origins allowed to call the API (production and any preview hostnames you use). After Render is live, set Vercel's `VITE_API_BASE_URL` to the Render origin and redeploy the frontend.
+
+### 5. Deploy the frontend to Vercel
+
+Import the same GitHub repository into Vercel, set the project's **Root Directory** to this folder if needed, and add `VITE_API_BASE_URL` with the Render service origin (for example `https://proctorly-api.onrender.com`, without `/api` or a trailing slash). Vercel builds the Vite app and serves the static frontend. Add the final Vercel hostname to Firebase Authentication's Authorized domains and Render's `FRONTEND_ORIGINS`.
+
+The Firebase web configuration is public client configuration, not a server credential. Do not add a Vercel API key; only the Firebase Admin service-account JSON is private and belongs in Render.
 
 ---
 

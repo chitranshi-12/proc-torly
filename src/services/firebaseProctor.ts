@@ -11,8 +11,7 @@
  */
 
 import { doc, setDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
-import { db, storage, handleFirestoreError, OperationType } from './firebase';
+import { db, handleFirestoreError, OperationType } from './firebase';
 import { queueViolationOffline, getQueuedViolations, removeQueuedViolation } from './offlineQueue';
 import * as tf from '@tensorflow/tfjs';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
@@ -267,33 +266,12 @@ export class FirebaseProctorEngine {
     }
   }
 
-  // Upload to Firebase Storage & Firestore
+  // Log violation record to Firestore (Spark ₹0 Tier: Cloud image upload disabled; live streaming active)
   private async uploadViolationToFirebase(item: any) {
-    let screenUrl = '';
-    let webcamUrl = '';
-
-    // Upload screen capture to Storage if present
-    if (item.screenBase64) {
-      try {
-        const screenRef = ref(storage, `violations/${item.sessionId}/${item.id}_screen.jpg`);
-        await uploadString(screenRef, item.screenBase64, 'data_url');
-        screenUrl = await getDownloadURL(screenRef);
-      } catch (e) {
-        // Fallback: use data URI if storage permission requires specific rule
-        screenUrl = item.screenBase64;
-      }
-    }
-
-    // Upload webcam capture to Storage if present
-    if (item.webcamBase64) {
-      try {
-        const camRef = ref(storage, `violations/${item.sessionId}/${item.id}_cam.jpg`);
-        await uploadString(camRef, item.webcamBase64, 'data_url');
-        webcamUrl = await getDownloadURL(camRef);
-      } catch (e) {
-        webcamUrl = item.webcamBase64;
-      }
-    }
+    // Zero-Budget (₹0) Deployment: Cloud Storage requires Blaze plan.
+    // Persistent image uploads disabled. Live monitoring is streamed real-time via Socket.IO & WebRTC.
+    const screenUrl = '';
+    const webcamUrl = '';
 
     // Write to Firestore `violations/{violationId}`
     const violationDoc = doc(db, 'violations', item.id);
@@ -310,6 +288,7 @@ export class FirebaseProctorEngine {
       timestamp: item.timestamp,
       screenUrl,
       webcamUrl,
+      evidenceStatus: 'live_stream_only',
       createdAt: serverTimestamp()
     });
 
@@ -342,6 +321,11 @@ export class FirebaseProctorEngine {
       console.log(`🌐 Restoring ${items.length} queued violations to Firebase...`);
       for (const item of items) {
         try {
+          // Discard legacy MOUSE_LEAVE or WINDOW_BLUR items so they do not produce strikes
+          if (item.type === 'MOUSE_LEAVE' || item.type === 'WINDOW_BLUR') {
+            await removeQueuedViolation(item.id);
+            continue;
+          }
           await this.uploadViolationToFirebase(item);
           await removeQueuedViolation(item.id);
         } catch (e) {

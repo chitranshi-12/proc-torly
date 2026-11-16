@@ -2,35 +2,48 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * OmniProctor Client Socket.IO Service
+ * exam.co Real-Time Socket.IO Client Service
  */
 
 import { io, Socket } from 'socket.io-client';
+import { getAuthToken } from './api';
 
-let socket: Socket | null = null;
+let socketInstance: Socket | null = null;
 
 export function getSocket(): Socket {
-  if (!socket) {
-    socket = io(window.location.origin, {
+  if (!socketInstance) {
+    const backendUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+    socketInstance = io(backendUrl, {
+      auth: (cb) => {
+        cb({ token: getAuthToken() });
+      },
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5,
+      timeout: 45000
     });
 
-    socket.on('connect', () => {
-      console.log('🔌 OmniProctor Socket connected:', socket?.id);
+    socketInstance.on('connect', () => {
+      console.log('⚡ exam.co socket connected:', socketInstance?.id);
     });
 
-    socket.on('disconnect', (reason) => {
-      console.log('🔌 OmniProctor Socket disconnected:', reason);
+    socketInstance.on('disconnect', (reason) => {
+      console.log('⚡ exam.co socket disconnected:', reason);
+    });
+
+    socketInstance.on('connect_error', (err) => {
+      console.warn('⚡ exam.co socket connection warning:', err.message);
     });
   }
-  return socket;
+  return socketInstance;
 }
 
 export function disconnectSocket() {
-  if (socket) {
-    socket.disconnect();
-    socket = null;
+  if (socketInstance) {
+    socketInstance.disconnect();
+    socketInstance = null;
   }
 }
